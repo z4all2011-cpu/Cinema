@@ -1,996 +1,693 @@
-```html
 <!DOCTYPE html>
-<html lang="ar" dir="rtl" class="dark">
+<html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>سينما بارتي | مشاهدة متزامنة P2P</title>
-    
-    <!-- خط القاهرة العربي العصري -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-    
-    <!-- مكتبة Tailwind CSS للتصميم المتجاوب -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Cairo', 'sans-serif'],
-                    },
-                    colors: {
-                        darkbg: '#09090b',
-                        cardbg: '#121216',
-                        accent: '#8b5cf6',
-                        accenthover: '#7c3aed',
-                    }
-                }
-            }
-        }
-    </script>
-
-    <!-- مكتبة PeerJS للربط المباشر P2P عبر WebRTC -->
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    
-    <!-- مكتبة WebTorrent لتشغيل روابط Magnet في المتصفح -->
-    <script src="https://cdn.jsdelivr.net/npm/webtorrent@latest/webtorrent.min.js"></script>
-    
-    <!-- مكتبة HLS.js لتشغيل روابط البث المباشر M3U8 -->
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-
-    <style>
-        body {
-            background-color: #09090b;
-            color: #f4f4f5;
-            font-family: 'Cairo', sans-serif;
-            overflow-x: hidden;
-        }
-        
-        /* تخصيص شريط التمرير */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #121216;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #27272a;
-            border-radius: 9999px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #3f3f46;
-        }
-
-        /* تحسين مظهر الترجمة داخل الفيديو */
-        video::cue {
-            background-color: rgba(0, 0, 0, 0.75);
-            color: #ffffff;
-            font-family: 'Cairo', sans-serif;
-            font-size: 1.15rem;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.9);
-            padding: 4px 10px;
-            border-radius: 6px;
-        }
-
-        /* تأثير نبض لمؤشر الاتصال */
-        @keyframes pulse-ring {
-            0% { transform: scale(0.8); opacity: 0.8; }
-            100% { transform: scale(2); opacity: 0; }
-        }
-        .status-pulse::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            border-radius: 9999px;
-            background-color: inherit;
-            animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>سينما بارتي | Watch Party & IPTV</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <style>
+    body { background-color: #0b0b0f; color: #f3f4f6; font-family: system-ui, -apple-system, sans-serif; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #13131a; }
+    ::-webkit-scrollbar-thumb { background: #4c1d95; border-radius: 4px; }
+  </style>
 </head>
-<body class="min-h-screen flex flex-col selection:bg-violet-600 selection:text-white">
+<body class="min-h-screen flex flex-col pb-10">
 
-    <!-- نظام الإشعارات العائمة (بديل alert) -->
-    <div id="toast-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 w-11/12 max-w-md pointer-events-none"></div>
-
-    <!-- الشريط العلوي (Header & P2P Connection Bar) -->
-    <header class="bg-cardbg/90 backdrop-blur-md border-b border-zinc-800/80 sticky top-0 z-40">
-        <div class="max-w-7xl mx-auto px-3 sm:px-6 py-3 flex flex-col lg:flex-row items-center justify-between gap-3">
-            
-            <!-- الشعار وحالة الاتصال -->
-            <div class="flex items-center justify-between w-full lg:w-auto gap-4">
-                <div class="flex items-center gap-2.5">
-                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 to-fuchsia-600 flex items-center justify-center shadow-lg shadow-violet-600/20">
-                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                        </svg>
-                    </div>
-                    <div>
-                        <h1 class="text-lg font-extrabold tracking-tight bg-gradient-to-l from-white to-zinc-400 bg-clip-text text-transparent">سينما بارتي</h1>
-                        <p class="text-[11px] text-zinc-400">ربط مباشر فائق السرعة P2P</p>
-                    </div>
-                </div>
-
-                <!-- مؤشر حالة الاتصال -->
-                <div id="connection-badge" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-800 text-xs font-semibold">
-                    <span class="relative flex h-2.5 w-2.5">
-                        <span id="status-dot" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
-                    </span>
-                    <span id="status-text" class="text-zinc-300">بانتظار الربط...</span>
-                </div>
-            </div>
-
-            <!-- أدوات الربط المباشر (كود الغرفة والانضمام) -->
-            <div class="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full lg:w-auto justify-end">
-                
-                <!-- كود غرفتك -->
-                <div class="flex items-center bg-zinc-900/90 border border-zinc-800 rounded-xl p-1 flex-1 sm:flex-initial justify-between">
-                    <span class="text-xs text-zinc-400 px-2">كودك:</span>
-                    <code id="my-peer-id" class="font-mono text-sm font-bold text-violet-400 px-2 tracking-wider select-all">جاري التوليد...</code>
-                    <button onclick="copyRoomId()" title="نسخ الكود" class="p-2 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded-lg transition active:scale-95 flex items-center gap-1 text-xs">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
-                        </svg>
-                        <span class="hidden sm:inline">نسخ</span>
-                    </button>
-                </div>
-
-                <!-- الانضمام لغرفة صديق -->
-                <div id="join-box" class="flex items-center gap-1.5 flex-1 sm:flex-initial">
-                    <input type="text" id="remote-peer-input" placeholder="أدخل كود صديقك..." 
-                        class="bg-zinc-900 border border-zinc-800 focus:border-violet-500 focus:outline-none rounded-xl px-3 py-2 text-xs sm:text-sm w-full sm:w-40 font-mono text-center uppercase placeholder:font-sans placeholder:normal-case">
-                    <button id="connect-btn" onclick="connectToPeer()" 
-                        class="bg-violet-600 hover:bg-violet-500 text-white font-bold px-4 py-2 rounded-xl text-xs sm:text-sm transition shadow-lg shadow-violet-600/20 whitespace-nowrap active:scale-95">
-                        انضمام
-                    </button>
-                </div>
-
-                <!-- زر قطع الاتصال (يظهر عند الاتصال) -->
-                <button id="disconnect-btn" onclick="disconnectPeer()" class="hidden bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 font-semibold px-3 py-2 rounded-xl text-xs transition">
-                    قطع الاتصال
-                </button>
-            </div>
+  <!-- الشريط العلوي -->
+  <header class="bg-[#13131a] border-b border-gray-800 px-4 py-3 sticky top-0 z-30">
+    <div class="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <div class="w-9 h-9 rounded-xl bg-purple-600 flex items-center justify-center font-bold text-lg shadow-lg shadow-purple-600/30">▶</div>
+        <div>
+          <h1 class="font-bold text-base leading-tight">سينما بارتي</h1>
+          <p class="text-[11px] text-gray-400">مزامنة P2P + مكتبة IPTV</p>
         </div>
-    </header>
+      </div>
 
-    <!-- المحتوى الرئيسي -->
-    <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
-        
-        <!-- القسم الأيمن: مشغل الفيديو ومصادر التشغيل (8 أعمدة على الشاشات الكبيرة) -->
-        <div class="lg:col-span-8 flex flex-col gap-4">
-            
-            <!-- حاوية مشغل الفيديو -->
-            <div class="relative bg-black rounded-2xl overflow-hidden border border-zinc-800/80 shadow-2xl aspect-video group flex items-center justify-center">
-                
-                <!-- رسالة الترحيب قبل تشغيل أي فيديو -->
-                <div id="player-placeholder" class="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-gradient-to-b from-zinc-900/50 to-black z-10">
-                    <div class="w-16 h-16 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-3 text-violet-500">
-                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"></path>
-                        </svg>
-                    </div>
-                    <h2 class="text-base sm:text-lg font-bold text-zinc-200 mb-1">جاهزون للمشاهدة!</h2>
-                    <p class="text-xs sm:text-sm text-zinc-400 max-w-md">شارك كود غرفتك مع صديقك، ثم ضع رابط الفيديو المباشر أو رابط التورنت (Magnet) في الأسفل ليبدأ العرض عندكما معاً.</p>
-                </div>
+      <!-- حالة الاتصال -->
+      <div id="connBadge" class="flex items-center gap-2 bg-gray-900 border border-gray-700 px-3 py-1.5 rounded-full text-xs">
+        <span id="connDot" class="w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse"></span>
+        <span id="connText">بانتظار الاتصال...</span>
+      </div>
+    </div>
 
-                <!-- تنبيه تجاوز قيود التشغيل التلقائي (Unmute / Play Overlay) -->
-                <div id="autoplay-overlay" class="hidden absolute inset-0 bg-black/80 backdrop-blur-sm z-30 flex flex-col items-center justify-center p-4 text-center">
-                    <button onclick="manualUnlockPlayback()" class="bg-violet-600 hover:bg-violet-500 text-white font-bold px-6 py-3 rounded-2xl shadow-xl shadow-violet-600/30 flex items-center gap-2 text-sm sm:text-base transition transform hover:scale-105">
-                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path>
-                        </svg>
-                        اضغط هنا لتفعيل الصوت ومزامنة البث
-                    </button>
-                    <p class="text-xs text-zinc-400 mt-2">المتصفح يتطلب نقرة واحدة للسماح بالتشغيل التلقائي مع الصوت</p>
-                </div>
+    <!-- شريط الكود والربط -->
+    <div class="max-w-4xl mx-auto mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <div class="flex items-center justify-between bg-gray-900/90 border border-gray-800 rounded-xl px-3 py-2">
+        <span class="text-xs text-gray-400">كودك:</span>
+        <span id="myCode" class="font-mono font-bold text-purple-400 tracking-widest text-sm">...</span>
+        <button onclick="copyMyCode()" class="text-xs bg-gray-800 hover:bg-gray-700 px-2.5 py-1 rounded-lg text-gray-200">نسخ</button>
+      </div>
 
-                <!-- عنصر الفيديو الرئيسي -->
-                <video id="video-player" class="w-full h-full object-contain bg-black" controls playsinline crossorigin="anonymous">
-                    <track id="subtitle-track" kind="subtitles" srclang="ar" label="العربية" default>
-                </video>
-            </div>
+      <div id="joinBox" class="flex items-center gap-1.5">
+        <input id="friendCodeInput" type="text" maxlength="6" placeholder="أدخل كود صديقك" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-xs text-center font-mono uppercase focus:outline-none focus:border-purple-500" />
+        <button onclick="connectToFriend()" class="bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap">انضمام</button>
+      </div>
 
-            <!-- شريط معلومات التورنت (يظهر فقط عند تشغيل رابط Magnet) -->
-            <div id="torrent-stats-bar" class="hidden bg-zinc-900/90 border border-violet-500/30 rounded-2xl p-3.5 flex flex-col gap-2">
-                <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <div class="flex items-center gap-2">
-                        <span class="inline-block w-2 h-2 rounded-full bg-violet-500 animate-ping"></span>
-                        <span id="torrent-name" class="font-bold text-zinc-200 truncate max-w-[200px] sm:max-w-xs">جاري جلب بيانات التورنت...</span>
-                    </div>
-                    <div class="flex items-center gap-3 text-zinc-300 font-mono">
-                        <span title="سرعة التحميل" class="text-emerald-400">⬇ <span id="torrent-speed">0 KB/s</span></span>
-                        <span title="عدد الأقران المتصلين" class="text-sky-400">👥 <span id="torrent-peers">0</span></span>
-                        <span title="نسبة التحميل" class="text-violet-400 font-bold"><span id="torrent-progress">0%</span></span>
-                    </div>
-                </div>
-                <!-- شريط التقدم -->
-                <div class="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
-                    <div id="torrent-progress-bar" class="bg-gradient-to-l from-violet-500 to-fuchsia-500 h-full transition-all duration-300" style="width: 0%"></div>
-                </div>
-            </div>
+      <div id="disconnectBox" class="hidden flex items-center justify-end">
+        <button onclick="disconnectPeer()" class="w-full sm:w-auto bg-red-900/50 hover:bg-red-800/70 border border-red-700/50 text-red-200 px-4 py-2 rounded-xl text-xs font-bold">قطع الاتصال</button>
+      </div>
+    </div>
+  </header>
 
-            <!-- لوحة التحكم بالمصادر والمزامنة -->
-            <div class="bg-cardbg border border-zinc-800/80 rounded-2xl p-4 flex flex-col gap-4">
-                
-                <!-- إدخال رابط مباشر أو Magnet -->
-                <div class="flex flex-col gap-2">
-                    <label class="text-xs font-bold text-zinc-300 flex items-center justify-between">
-                        <span>رابط الفيديو (مباشر MP4 / M3U8 أو تورنت Magnet)</span>
-                        <span class="text-[11px] text-zinc-500 font-normal">يُرسل تلقائياً لصديقك</span>
-                    </label>
-                    <div class="flex flex-col sm:flex-row gap-2">
-                        <input type="text" id="media-url-input" placeholder="الصق رابط https://... أو magnet:?xt=urn:btih:..." 
-                            class="flex-1 bg-zinc-900 border border-zinc-800 focus:border-violet-500 focus:outline-none rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-zinc-200 placeholder:text-zinc-600 dir-ltr text-left">
-                        <button onclick="loadMediaFromInput()" 
-                            class="bg-violet-600 hover:bg-violet-500 text-white font-bold px-5 py-2.5 rounded-xl text-xs sm:text-sm transition shadow-lg shadow-violet-600/20 flex items-center justify-center gap-2 whitespace-nowrap active:scale-95">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                            </svg>
-                            تشغيل ومشاركة
-                        </button>
-                    </div>
-                </div>
+  <!-- المحتوى الرئيسي -->
+  <main class="max-w-4xl w-full mx-auto px-3 pt-3 flex-1 flex flex-col gap-3">
 
-                <!-- أزرار إضافية: ملف محلي + ترجمة + مزامنة يدوية + كتم الصوت -->
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-zinc-800/60">
-                    
-                    <!-- اختيار ملف فيديو من الجهاز -->
-                    <label class="cursor-pointer bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 rounded-xl p-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95">
-                        <svg class="w-4 h-4 text-sky-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
-                        </svg>
-                        <span>ملف من جهازي</span>
-                        <input type="file" id="local-video-input" accept="video/*,.mkv" class="hidden" onchange="handleLocalVideo(event)">
-                    </label>
+    <!-- تنبيهات -->
+    <div id="alertBox" class="hidden bg-red-950/90 border border-red-700 text-red-200 px-4 py-2.5 rounded-xl text-xs text-center"></div>
 
-                    <!-- إضافة ملف ترجمة SRT أو VTT -->
-                    <label class="cursor-pointer bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 rounded-xl p-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95">
-                        <svg class="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"></path>
-                        </svg>
-                        <span>ترجمة SRT/VTT</span>
-                        <input type="file" id="subtitle-input" accept=".srt,.vtt" class="hidden" onchange="handleSubtitleUpload(event)">
-                    </label>
+    <!-- مشغل الفيديو -->
+    <div class="relative w-full aspect-video bg-black rounded-2xl overflow-hidden border border-gray-800 shadow-2xl">
+      <video id="videoPlayer" class="w-full h-full object-contain bg-black" controls playsinline crossorigin="anonymous"></video>
+      <div id="ytPlayerWrapper" class="hidden w-full h-full">
+        <div id="ytPlayer"></div>
+      </div>
 
-                    <!-- زر مزامنة الوقت الآن -->
-                    <button onclick="forceSyncNow()" class="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 rounded-xl p-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95">
-                        <svg class="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                        </svg>
-                        <span>مزامنة الآن</span>
-                    </button>
+      <!-- طبقة تفعيل الصوت للمتصفح -->
+      <div id="unmuteOverlay" onclick="unlockAudio()" class="hidden absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center cursor-pointer z-20">
+        <div class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-6 py-3.5 rounded-2xl shadow-xl flex items-center gap-2 text-sm">
+          <span>▶</span>
+          <span>اضغط هنا لتفعيل الصوت ومزامنة البث</span>
+        </div>
+        <p class="text-[11px] text-gray-400 mt-2">المتصفح يتطلب نقرة واحدة للسماح بالتشغيل مع الصوت</p>
+      </div>
 
-                    <!-- زر كتم / تفعيل الصوت -->
-                    <button id="mute-toggle-btn" onclick="toggleMute()" class="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 rounded-xl p-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95">
-                        <svg id="mute-icon" class="w-4 h-4 text-violet-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path>
-                        </svg>
-                        <span id="mute-text">الصوت مفعل</span>
-                    </button>
+      <!-- شارة وضع البث المباشر P2P -->
+      <div id="relayBadge" class="hidden absolute top-3 left-3 bg-emerald-600/90 text-white text-[10px] font-bold px-2.5 py-1 rounded-full z-10 shadow">
+        بث مباشر P2P (حماية الاشتراك مفعلة)
+      </div>
+    </div>
 
-                </div>
-            </div>
+    <!-- أزرار التحكم السريعة -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <button onclick="forceSync()" class="bg-[#16161f] hover:bg-gray-800 border border-gray-800 py-2 px-3 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5">
+        <span>🔄</span><span>مزامنة الآن</span>
+      </button>
+      <label class="bg-[#16161f] hover:bg-gray-800 border border-gray-800 py-2 px-3 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer">
+        <span>💬</span><span>ترجمة SRT/VTT</span>
+        <input type="file" accept=".srt,.vtt" class="hidden" onchange="loadSubtitle(event)" />
+      </label>
+      <label class="bg-[#16161f] hover:bg-gray-800 border border-gray-800 py-2 px-3 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer">
+        <span>📁</span><span>ملف MP4 محلي</span>
+        <input type="file" accept="video/mp4,video/webm" class="hidden" onchange="loadLocalVideo(event)" />
+      </label>
+      <button id="relayToggleBtn" onclick="toggleRelayMode()" class="bg-emerald-950/60 border border-emerald-700/60 text-emerald-300 py-2 px-3 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5">
+        <span>🛡️</span><span id="relayToggleText">حماية الاشتراك: مفعّل</span>
+      </button>
+    </div>
+
+    <!-- التبويبات: رابط مباشر/يوتيوب أو مكتبة Xtream IPTV -->
+    <div class="bg-[#13131a] border border-gray-800 rounded-2xl p-3">
+      <div class="flex gap-2 border-b border-gray-800 pb-2.5 mb-3">
+        <button id="tabBtnDirect" onclick="switchTab('direct')" class="flex-1 py-2 rounded-xl text-xs font-bold bg-purple-600 text-white">رابط مباشر / يوتيوب</button>
+        <button id="tabBtnXtream" onclick="switchTab('xtream')" class="flex-1 py-2 rounded-xl text-xs font-bold bg-gray-900 text-gray-400 hover:text-white">مكتبة Xtream IPTV</button>
+      </div>
+
+      <!-- قسم الرابط المباشر ويوتيوب -->
+      <div id="tabDirect" class="space-y-2.5">
+        <div class="flex flex-col sm:flex-row gap-2">
+          <input id="videoUrlInput" type="text" dir="ltr" placeholder="https://... (MP4, M3U8, أو رابط YouTube)" class="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:border-purple-500" />
+          <button onclick="playInputUrl()" class="bg-purple-600 hover:bg-purple-500 px-5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap">تشغيل ومشاركة</button>
+        </div>
+      </div>
+
+      <!-- قسم Xtream Codes IPTV -->
+      <div id="tabXtream" class="hidden space-y-3">
+        <!-- بيانات الدخول -->
+        <div id="xtreamLoginForm" class="space-y-2">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <input id="xtHost" type="text" dir="ltr" placeholder="http://server.com:8080" class="bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-purple-500" />
+            <input id="xtUser" type="text" dir="ltr" placeholder="اسم المستخدم (Username)" class="bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-purple-500" />
+            <input id="xtPass" type="password" dir="ltr" placeholder="كلمة السر (Password)" class="bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-purple-500" />
+          </div>
+          <button onclick="loginXtream()" id="xtLoginBtn" class="w-full bg-purple-600 hover:bg-purple-500 py-2.5 rounded-xl text-xs font-bold">دخول وجلب المكتبة</button>
         </div>
 
-        <!-- القسم الأيسر: المحادثة الفورية وسجل النشاط (4 أعمدة على الشاشات الكبيرة) -->
-        <div class="lg:col-span-4 flex flex-col bg-cardbg border border-zinc-800/80 rounded-2xl overflow-hidden h-[420px] lg:h-auto lg:min-h-[540px]">
-            
-            <!-- رأس المحادثة -->
-            <div class="px-4 py-3 border-b border-zinc-800/80 flex items-center justify-between bg-zinc-900/40">
-                <div class="flex items-center gap-2">
-                    <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
-                    </svg>
-                    <h3 class="text-sm font-bold text-zinc-200">المحادثة المباشرة</h3>
-                </div>
-                <span class="text-[11px] text-zinc-500">مشفر P2P</span>
+        <!-- واجهة تصفح المكتبة بعد الدخول -->
+        <div id="xtreamBrowser" class="hidden space-y-2.5">
+          <div class="flex flex-wrap items-center justify-between gap-2 bg-gray-950 p-2 rounded-xl border border-gray-800">
+            <div class="flex gap-1.5">
+              <button onclick="loadXtreamSection('series')" id="xtSecSeries" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-purple-600 text-white">المسلسلات</button>
+              <button onclick="loadXtreamSection('vod')" id="xtSecVod" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-900 text-gray-300">الأفلام</button>
+              <button onclick="loadXtreamSection('live')" id="xtSecLive" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-900 text-gray-300">قنوات مباشرة</button>
             </div>
+            <button onclick="logoutXtream()" class="text-[11px] text-red-400 hover:underline px-2">تغيير الحساب</button>
+          </div>
 
-            <!-- منطقة عرض الرسائل -->
-            <div id="chat-messages" class="flex-1 p-3.5 overflow-y-auto flex flex-col gap-2.5 text-sm">
-                <div class="bg-zinc-900/80 border border-zinc-800/80 rounded-xl p-3 text-xs text-zinc-400 text-center leading-relaxed">
-                    مرحباً بك! انسخ <span class="text-violet-400 font-bold">كودك</span> من الأعلى وأرسله لصديقك، أو أدخل كوده واضغط انضمام.
-                </div>
+          <!-- الفئة والبحث -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <select id="xtCategorySelect" onchange="filterXtreamItems()" class="bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs focus:outline-none">
+              <option value="all">كل الأقسام</option>
+            </select>
+            <input id="xtSearchInput" oninput="filterXtreamItems()" type="text" placeholder="ابحث باسم المسلسل أو الفيلم أو القناة..." class="bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-purple-500" />
+          </div>
+
+          <!-- عرض الحلقات لمسلسل محدد -->
+          <div id="seriesEpisodesBox" class="hidden bg-gray-950 border border-purple-800/50 rounded-xl p-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <h3 id="selectedSeriesTitle" class="text-xs font-bold text-purple-300"></h3>
+              <button onclick="closeSeriesBox()" class="text-xs bg-gray-800 px-2.5 py-1 rounded-lg">رجوع للقائمة</button>
             </div>
+            <div id="episodesGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-60 overflow-y-auto pt-1"></div>
+          </div>
 
-            <!-- نموذج إرسال رسالة -->
-            <form onsubmit="sendChatMessage(event)" class="p-3 border-t border-zinc-800/80 bg-zinc-900/30 flex items-center gap-2">
-                <input type="text" id="chat-input" placeholder="اكتب رسالة لصديقك..." autocomplete="off"
-                    class="flex-1 bg-zinc-900 border border-zinc-800 focus:border-violet-500 focus:outline-none rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-zinc-200 placeholder:text-zinc-600">
-                <button type="submit" aria-label="إرسال"
-                    class="bg-violet-600 hover:bg-violet-500 text-white p-2.5 rounded-xl transition shadow-md shadow-violet-600/20 active:scale-95 shrink-0">
-                    <svg class="w-5 h-5 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
-                    </svg>
-                </button>
-            </form>
+          <!-- شبكة البطاقات -->
+          <div id="xtLoading" class="hidden text-center py-6 text-xs text-purple-400 animate-pulse">جاري جلب البيانات من السيرفر...</div>
+          <div id="xtItemsGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 max-h-80 overflow-y-auto pr-1"></div>
         </div>
+      </div>
+    </div>
 
-    </main>
+    <!-- المحادثة الفورية -->
+    <div class="bg-[#13131a] border border-gray-800 rounded-2xl p-3 flex flex-col">
+      <div class="text-xs font-bold text-gray-300 mb-2 flex items-center justify-between">
+        <span>الدردشة المباشرة</span>
+        <span class="text-[10px] text-gray-500">مشفر P2P</span>
+      </div>
+      <div id="chatMessages" class="h-36 overflow-y-auto space-y-1.5 bg-gray-950/70 rounded-xl p-2.5 mb-2 text-xs">
+        <div class="text-gray-500 text-center text-[11px]">شارك كودك مع صديقك للبدء...</div>
+      </div>
+      <div class="flex gap-2">
+        <input id="chatInput" type="text" placeholder="اكتب رسالة..." onkeypress="if(event.key==='Enter') sendChat()" class="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-purple-500" />
+        <button onclick="sendChat()" class="bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-xl text-xs font-bold">إرسال</button>
+      </div>
+    </div>
 
-    <!-- السكربت الرئيسي للتطبيق -->
-    <script>
-        /**
-         * ============================================================================
-         * المتغيرات العامة وحالة التطبيق (Application State)
-         * ============================================================================
-         */
-        let peer = null;                  // كائن PeerJS المحلي
-        let conn = null;                  // قناة الاتصال المباشر P2P مع الطرف الآخر
-        let wtClient = null;              // عميل WebTorrent لتشغيل روابط Magnet
-        let currentTorrent = null;        // التورنت النشط حالياً
-        let hlsInstance = null;           // مشغل HLS لروابط M3U8
-        let torrentStatsInterval = null;  // مؤقت تحديث إحصائيات التورنت
-        
-        // متغيرات لمنع حلقات التكرار اللانهائية أثناء المزامنة (Infinite Loop Prevention)
-        let isRemoteAction = false;
-        let lastSyncTimestamp = 0;
+  </main>
 
-        // عناصر واجهة المستخدم الأساسية
-        const video = document.getElementById('video-player');
-        const placeholder = document.getElementById('player-placeholder');
-        const autoplayOverlay = document.getElementById('autoplay-overlay');
-        const chatMessages = document.getElementById('chat-messages');
+  <script>
+    const WORKER_URL = "https://still-scene-7881.z4all2011.workers.dev/";
+    const video = document.getElementById('videoPlayer');
+    let peer = null;
+    let conn = null;
+    let mediaCall = null;
+    let hls = null;
+    let ytPlayer = null;
+    let isYouTubeMode = false;
+    let isRemoteAction = false;
+    let relayMode = true; // افتراضياً مفعل لحماية اشتراك Xtream
 
-        /**
-         * ============================================================================
-         * 1. نظام الإشعارات العائمة (Toast Notifications - بديل alert)
-         * ============================================================================
-         */
-        function showToast(message, type = 'info') {
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
-            
-            const colors = {
-                info: 'bg-zinc-900/95 border-zinc-700 text-zinc-100',
-                success: 'bg-emerald-950/95 border-emerald-500/50 text-emerald-200',
-                warning: 'bg-amber-950/95 border-amber-500/50 text-amber-200',
-                error: 'bg-rose-950/95 border-rose-500/50 text-rose-200'
-            };
+    // توليد كود من 6 خانات
+    const myShortId = Math.random().toString(36).substring(2, 8).toUpperCase();
+    document.getElementById('myCode').textContent = myShortId;
 
-            toast.className = `${colors[type] || colors.info} border backdrop-blur-md px-4 py-3 rounded-xl shadow-2xl text-xs sm:text-sm font-semibold text-center transition-all duration-300 transform translate-y-0 opacity-100`;
-            toast.textContent = message;
-            
-            container.appendChild(toast);
-            
-            setTimeout(() => {
-                toast.classList.add('opacity-0', '-translate-y-2');
-                setTimeout(() => toast.remove(), 300);
-            }, 3500);
-        }
+    function showAlert(msg) {
+      const box = document.getElementById('alertBox');
+      box.textContent = msg;
+      box.classList.remove('hidden');
+      setTimeout(() => box.classList.add('hidden'), 6000);
+    }
 
-        /**
-         * ============================================================================
-         * 2. تهيئة الاتصال المباشر P2P عبر PeerJS
-         * ============================================================================
-         */
-        function generateShortId() {
-            // توليد كود غرفة قصير من 6 أحرف/أرقام سهلة القراءة والكتابة
-            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-            let result = '';
-            for (let i = 0; i < 6; i++) {
-                result += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return result;
-        }
+    function copyMyCode() {
+      navigator.clipboard.writeText(myShortId);
+      showAlert("تم نسخ كودك: " + myShortId);
+    }
 
-        function initPeer() {
-            try {
-                const shortId = generateShortId();
-                // استخدام خوادم STUN عامة مجانية لضمان نجاح الربط المباشر عبر الشبكات المختلفة
-                peer = new Peer(shortId, {
-                    config: {
-                        iceServers: [
-                            { urls: 'stun:stun.l.google.com:19302' },
-                            { urls: 'stun:stun1.l.google.com:19302' },
-                            { urls: 'stun:global.stun.twilio.com:3478' }
-                        ]
-                    }
-                });
+    // تهيئة PeerJS
+    function initPeer() {
+      peer = new Peer('cinema-' + myShortId);
 
-                peer.on('open', (id) => {
-                    document.getElementById('my-peer-id').textContent = id;
-                });
+      peer.on('open', () => {
+        updateConnStatus('yellow', 'جاهز للربط');
+      });
 
-                // استقبال اتصال وارد من صديق
-                peer.on('connection', (incomingConn) => {
-                    if (conn && conn.open) {
-                        incomingConn.close(); // الغرفة مخصصة لشخصين فقط
-                        return;
-                    }
-                    setupConnection(incomingConn);
-                    showToast('انضم صديقك إلى الغرفة!', 'success');
-                });
+      peer.on('connection', (incomingConn) => {
+        conn = incomingConn;
+        setupDataConn();
+      });
 
-                peer.on('error', (err) => {
-                    console.error('PeerJS Error:', err);
-                    if (err.type === 'unavailable-id') {
-                        // في حال تصادف الكود، أعد التوليد
-                        peer.destroy();
-                        initPeer();
-                    } else if (err.type === 'peer-unavailable') {
-                        showToast('لم يتم العثور على غرفة بهذا الكود، تأكد منه.', 'error');
-                        resetConnectButton();
-                    } else {
-                        showToast('حدث خطأ في شبكة الاتصال المباشر.', 'error');
-                        resetConnectButton();
-                    }
-                });
-            } catch (error) {
-                console.error('Init Peer Exception:', error);
-                showToast('تعذر تهيئة نظام الاتصال المباشر.', 'error');
-            }
-        }
+      // استقبال البث المباشر من صديقك (P2P Stream Relay)
+      peer.on('call', (call) => {
+        call.answer();
+        call.on('stream', (remoteStream) => {
+          switchToHtml5Player();
+          if (hls) { hls.destroy(); hls = null; }
+          video.srcObject = remoteStream;
+          document.getElementById('relayBadge').classList.remove('hidden');
+          document.getElementById('unmuteOverlay').classList.remove('hidden');
+          video.play().catch(() => {});
+        });
+      });
 
-        // الاتصال بغرفة صديق عبر إدخال كوده
-        function connectToPeer() {
-            const remoteId = document.getElementById('remote-peer-input').value.trim().toUpperCase();
-            if (!remoteId) {
-                showToast('يرجى إدخال كود غرفة صديقك أولاً.', 'warning');
-                return;
-            }
-            if (remoteId === peer.id) {
-                showToast('لا يمكنك الاتصال بكود غرفتك الشخصي!', 'warning');
-                return;
-            }
+      peer.on('error', (err) => {
+        showAlert("خطأ في الاتصال: " + err.type);
+      });
+    }
 
-            const btn = document.getElementById('connect-btn');
-            btn.disabled = true;
-            btn.textContent = 'جاري الربط...';
+    function connectToFriend() {
+      const code = document.getElementById('friendCodeInput').value.trim().toUpperCase();
+      if (code.length < 4) return showAlert("أدخل كود صحيح مكون من 6 أحرف");
+      updateConnStatus('yellow', 'جاري الاتصال بصديقك...');
+      conn = peer.connect('cinema-' + code);
+      setupDataConn();
+    }
 
-            const outgoingConn = peer.connect(remoteId, { reliable: true });
-            setupConnection(outgoingConn);
-        }
+    function setupDataConn() {
+      conn.on('open', () => {
+        updateConnStatus('green', 'متصل بصديقك (P2P)');
+        document.getElementById('joinBox').classList.add('hidden');
+        document.getElementById('disconnectBox').classList.remove('hidden');
+        appendChat('النظام', 'تم الاتصال بصديقك بنجاح!', true);
+      });
 
-        function resetConnectButton() {
-            const btn = document.getElementById('connect-btn');
-            btn.disabled = false;
-            btn.textContent = 'انضمام';
-        }
+      conn.on('data', (data) => {
+        handleIncomingData(data);
+      });
 
-        // إعداد قناة البيانات (DataChannel) وتبادل الأوامر
-        function setupConnection(connection) {
-            conn = connection;
+      conn.on('close', () => {
+        updateConnStatus('red', 'انقطع الاتصال');
+        document.getElementById('joinBox').classList.remove('hidden');
+        document.getElementById('disconnectBox').classList.add('hidden');
+      });
+    }
 
-            conn.on('open', () => {
-                updateConnectionUI(true);
-                addSystemMessage('تم الاتصال المباشر بنجاح! أنتما الآن في نفس الغرفة.');
-                resetConnectButton();
+    function disconnectPeer() {
+      if (conn) conn.close();
+      if (mediaCall) mediaCall.close();
+    }
 
-                // إذا كان هناك فيديو مشغل مسبقاً عند المضيف، أرسل حالته للضيف الجديد
-                const currentUrl = document.getElementById('media-url-input').value.trim();
-                if (currentUrl) {
-                    sendData({
-                        type: 'LOAD_URL',
-                        url: currentUrl,
-                        currentTime: video.currentTime,
-                        isPlaying: !video.paused
-                    });
-                }
-            });
+    function updateConnStatus(color, text) {
+      const dot = document.getElementById('connDot');
+      dot.className = `w-2.5 h-2.5 rounded-full ${color === 'green' ? 'bg-emerald-500' : color === 'red' ? 'bg-red-500' : 'bg-yellow-500 animate-pulse'}`;
+      document.getElementById('connText').textContent = text;
+    }
 
-            conn.on('data', (data) => {
-                handleIncomingData(data);
-            });
+    function sendData(payload) {
+      if (conn && conn.open) conn.send(payload);
+    }
 
-            conn.on('close', () => {
-                updateConnectionUI(false);
-                addSystemMessage('انقطع الاتصال مع الطرف الآخر.');
-                showToast('غادر صديقك الغرفة.', 'warning');
-                conn = null;
-            });
+    function toggleRelayMode() {
+      relayMode = !relayMode;
+      document.getElementById('relayToggleText').textContent = relayMode ? 'حماية الاشتراك: مفعّل' : 'حماية الاشتراك: إرسال رابط';
+    }
 
-            conn.on('error', (err) => {
-                console.error('Connection Error:', err);
-                showToast('انقطع الاتصال المباشر.', 'error');
-            });
-        }
+    // استخراج ID يوتيوب
+    function getYouTubeId(url) {
+      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+      const match = url.match(regExp);
+      return (match && match[2].length === 11) ? match[2] : null;
+    }
 
-        function disconnectPeer() {
-            if (conn) {
-                conn.close();
-                conn = null;
-            }
-            updateConnectionUI(false);
-        }
+    function switchToHtml5Player() {
+      isYouTubeMode = false;
+      document.getElementById('ytPlayerWrapper').classList.add('hidden');
+      video.classList.remove('hidden');
+      if (ytPlayer && ytPlayer.stopVideo) ytPlayer.stopVideo();
+    }
 
-        function updateConnectionUI(isConnected) {
-            const dot = document.getElementById('status-dot');
-            const text = document.getElementById('status-text');
-            const joinBox = document.getElementById('join-box');
-            const disconnectBtn = document.getElementById('disconnect-btn');
+    function switchToYouTubePlayer(ytId) {
+      isYouTubeMode = true;
+      video.pause();
+      video.classList.add('hidden');
+      document.getElementById('relayBadge').classList.add('hidden');
+      document.getElementById('ytPlayerWrapper').classList.remove('hidden');
 
-            if (isConnected) {
-                dot.className = 'relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 status-pulse';
-                text.textContent = 'متصل بصديقك (P2P)';
-                text.className = 'text-emerald-400 font-bold';
-                joinBox.classList.add('hidden');
-                disconnectBtn.classList.remove('hidden');
-            } else {
-                dot.className = 'relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500';
-                text.textContent = 'بانتظار الربط...';
-                text.className = 'text-zinc-300';
-                joinBox.classList.remove('hidden');
-                disconnectBtn.classList.add('hidden');
-            }
-        }
+      if (!window.YT) {
+        const tag = document.createElement('script');
+        tag.src = "https://www.youtube.com/iframe_api";
+        document.head.appendChild(tag);
+        window.onYouTubeIframeAPIReady = () => createYTPlayer(ytId);
+      } else {
+        createYTPlayer(ytId);
+      }
+    }
 
-        function sendData(payload) {
-            if (conn && conn.open) {
-                conn.send(payload);
-            }
-        }
-
-        // نسخ كود الغرفة إلى الحافظة بطريقة متوافقة مع جميع المتصفحات
-        function copyRoomId() {
-            const idText = document.getElementById('my-peer-id').textContent;
-            if (!idText || idText.includes('جاري')) return;
-
-            const tempInput = document.createElement('input');
-            tempInput.value = idText;
-            document.body.appendChild(tempInput);
-            tempInput.select();
-            try {
-                document.execCommand('copy');
-                showToast(`تم نسخ الكود: ${idText}`, 'success');
-            } catch (err) {
-                showToast('تعذر النسخ التلقائي، انسخ الكود يدوياً.', 'warning');
-            }
-            document.body.removeChild(tempInput);
-        }
-
-        /**
-         * ============================================================================
-         * 3. معالجة البيانات والأوامر الواردة من الطرف الآخر
-         * ============================================================================
-         */
-        function handleIncomingData(data) {
-            if (!data || !data.type) return;
-
-            switch (data.type) {
-                case 'CHAT':
-                    appendChatMessage(data.message, false);
-                    break;
-
-                case 'LOAD_URL':
-                    document.getElementById('media-url-input').value = data.url;
-                    addSystemMessage('قام صديقك بتشغيل فيديو جديد...');
-                    loadMediaSource(data.url, false);
-                    if (data.currentTime > 0) {
-                        setTimeout(() => {
-                            isRemoteAction = true;
-                            video.currentTime = data.currentTime;
-                        }, 1500);
-                    }
-                    break;
-
-                case 'PLAY':
-                    executeRemoteVideoAction(() => {
-                        if (Math.abs(video.currentTime - data.currentTime) > 1.2) {
-                            video.currentTime = data.currentTime;
-                        }
-                        safePlayVideo();
-                        addSystemMessage(`▶ قام صديقك بتشغيل الفيديو (${formatTime(data.currentTime)})`);
-                    });
-                    break;
-
-                case 'PAUSE':
-                    executeRemoteVideoAction(() => {
-                        video.pause();
-                        if (Math.abs(video.currentTime - data.currentTime) > 0.8) {
-                            video.currentTime = data.currentTime;
-                        }
-                        addSystemMessage(`⏸ قام صديقك بإيقاف الفيديو (${formatTime(data.currentTime)})`);
-                    });
-                    break;
-
-                case 'SEEK':
-                    executeRemoteVideoAction(() => {
-                        video.currentTime = data.currentTime;
-                        addSystemMessage(`⏩ انتقل صديقك إلى الدقيقة ${formatTime(data.currentTime)}`);
-                    });
-                    break;
-
-                case 'FORCE_SYNC':
-                    executeRemoteVideoAction(() => {
-                        video.currentTime = data.currentTime;
-                        if (data.isPlaying) {
-                            safePlayVideo();
-                        } else {
-                            video.pause();
-                        }
-                        showToast(`تمت مطابقة التوقيت مع صديقك (${formatTime(data.currentTime)})`, 'info');
-                    });
-                    break;
-
-                case 'LOCAL_FILE_NOTICE':
-                    addSystemMessage(`📁 اختار صديقك ملفاً محلياً: "${data.fileName}". اختر نفس الملف من جهازك للمزامنة!`);
-                    showToast('صديقك شغّل ملفاً محلياً، اختر نفس الملف من جهازك.', 'info');
-                    break;
-            }
-        }
-
-        // تنفيذ أمر فيديو وارد دون إعادة إرساله للطرف الآخر
-        function executeRemoteVideoAction(actionFn) {
-            isRemoteAction = true;
-            actionFn();
-            setTimeout(() => {
-                isRemoteAction = false;
-            }, 400);
-        }
-
-        /**
-         * ============================================================================
-         * 4. تشغيل مصادر الفيديو (روابط مباشرة + HLS + WebTorrent + ملفات محلية)
-         * ============================================================================
-         */
-        function loadMediaFromInput() {
-            const url = document.getElementById('media-url-input').value.trim();
-            if (!url) {
-                showToast('يرجى لصق رابط الفيديو أو رابط التورنت (Magnet) أولاً.', 'warning');
-                return;
-            }
-            loadMediaSource(url, true);
-        }
-
-        function loadMediaSource(url, broadcast = true) {
-            cleanupPreviousMedia();
-            placeholder.classList.add('hidden');
-
-            // إرسال الرابط لصديقك إذا كنت أنت من أضافه
-            if (broadcast) {
-                sendData({
-                    type: 'LOAD_URL',
-                    url: url,
-                    currentTime: 0,
-                    isPlaying: true
-                });
-                addSystemMessage('قمت بمشاركة رابط فيديو جديد مع الغرفة.');
-            }
-
-            // الحالة 1: رابط تورنت Magnet
-            if (url.startsWith('magnet:')) {
-                startWebTorrent(url);
-                return;
-            }
-
-            // الحالة 2: بث مباشر HLS (.m3u8)
-            if (url.includes('.m3u8')) {
-                if (Hls.isSupported()) {
-                    hlsInstance = new Hls();
-                    hlsInstance.loadSource(url);
-                    hlsInstance.attachMedia(video);
-                    hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
-                        safePlayVideo();
-                    });
-                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                    video.src = url;
-                    safePlayVideo();
-                } else {
-                    showToast('متصفحك لا يدعم تشغيل روابط M3U8.', 'error');
-                }
-                return;
-            }
-
-            // الحالة 3: رابط فيديو مباشر (MP4 / WebM / Ogg)
-            video.src = url;
-            safePlayVideo();
-        }
-
-        // تشغيل رابط Magnet عبر WebTorrent داخل المتصفح
-        function startWebTorrent(magnetUri) {
-            const statsBar = document.getElementById('torrent-stats-bar');
-            const nameEl = document.getElementById('torrent-name');
-            const speedEl = document.getElementById('torrent-speed');
-            const peersEl = document.getElementById('torrent-peers');
-            const progressEl = document.getElementById('torrent-progress');
-            const progressBar = document.getElementById('torrent-progress-bar');
-
-            statsBar.classList.remove('hidden');
-            nameEl.textContent = 'جاري الاتصال بشبكة التورنت وجلب البيانات...';
-            showToast('بدأ الاتصال بالتورنت، قد يستغرق الأمر بضع ثوانٍ...', 'info');
-
-            if (!wtClient) {
-                wtClient = new WebTorrent();
-            }
-
-            // قائمة Trackers تدعم WebRTC لزيادة سرعة العثور على أقران في المتصفح
-            const rtcTrackers = [
-                'wss://tracker.openwebtorrent.com',
-                'wss://tracker.btorrent.xyz',
-                'wss://tracker.fastcast.nz',
-                'wss://tracker.webtorrent.dev'
-            ];
-
-            currentTorrent = wtClient.add(magnetUri, { announce: rtcTrackers }, (torrent) => {
-                // البحث عن أكبر ملف فيديو داخل التورنت
-                const videoFile = torrent.files.reduce((largest, file) => {
-                    const isVideo = /\.(mp4|mkv|webm|avi|mov|m4v)$/i.test(file.name);
-                    if (!isVideo) return largest;
-                    return (!largest || file.length > largest.length) ? file : largest;
-                }, null);
-
-                if (!videoFile) {
-                    showToast('لم يتم العثور على ملف فيديو صالح داخل هذا التورنت!', 'error');
-                    return;
-                }
-
-                nameEl.textContent = videoFile.name;
-                showToast(`تم العثور على الملف: ${videoFile.name}`, 'success');
-
-                // عرض الفيديو مباشرة في عنصر HTML5 Video
-                videoFile.renderTo(video, { autoplay: true }, (err) => {
-                    if (err) {
-                        console.error('WebTorrent Render Error:', err);
-                        showToast('حدث خطأ أثناء عرض الفيديو، قد تكون صيغته غير مدعومة بالمتصفح.', 'error');
-                    } else {
-                        safePlayVideo();
-                    }
-                });
-
-                // تحديث إحصائيات التحميل كل ثانية
-                torrentStatsInterval = setInterval(() => {
-                    if (!currentTorrent) return;
-                    const percent = Math.round(torrent.progress * 100);
-                    speedEl.textContent = formatBytes(torrent.downloadSpeed) + '/s';
-                    peersEl.textContent = torrent.numPeers;
-                    progressEl.textContent = percent + '%';
-                    progressBar.style.width = percent + '%';
-                }, 1000);
-            });
-
-            currentTorrent.on('error', (err) => {
-                console.error('Torrent Error:', err);
-                showToast('خطأ في التورنت: ' + err.message, 'error');
-            });
-        }
-
-        // اختيار ملف فيديو محلي من الجهاز (للمزامنة دون استهلاك إنترنت)
-        function handleLocalVideo(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            cleanupPreviousMedia();
-            placeholder.classList.add('hidden');
-
-            const fileURL = URL.createObjectURL(file);
-            video.src = fileURL;
-            safePlayVideo();
-
-            sendData({
-                type: 'LOCAL_FILE_NOTICE',
-                fileName: file.name
-            });
-            addSystemMessage(`قمت بتشغيل ملف محلي: "${file.name}"`);
-        }
-
-        // تنظيف المشغلات السابقة قبل تحميل مصدر جديد
-        function cleanupPreviousMedia() {
-            if (torrentStatsInterval) {
-                clearInterval(torrentStatsInterval);
-                torrentStatsInterval = null;
-            }
-            if (currentTorrent) {
-                currentTorrent.destroy();
-                currentTorrent = null;
-            }
-            if (hlsInstance) {
-                hlsInstance.destroy();
-                hlsInstance = null;
-            }
-            document.getElementById('torrent-stats-bar').classList.add('hidden');
-        }
-
-        /**
-         * ============================================================================
-         * 5. إدارة أحداث الفيديو والمزامنة التلقائية (Play / Pause / Seek / Autoplay)
-         * ============================================================================
-         */
-        video.addEventListener('play', () => {
+    function createYTPlayer(ytId) {
+      if (ytPlayer) {
+        ytPlayer.loadVideoById(ytId);
+        return;
+      }
+      ytPlayer = new YT.Player('ytPlayer', {
+        width: '100%',
+        height: '100%',
+        videoId: ytId,
+        playerVars: { autoplay: 1, playsinline: 1, rel: 0 },
+        events: {
+          onStateChange: (e) => {
             if (isRemoteAction) return;
-            sendData({
-                type: 'PLAY',
-                currentTime: video.currentTime
-            });
-        });
-
-        video.addEventListener('pause', () => {
-            if (isRemoteAction) return;
-            sendData({
-                type: 'PAUSE',
-                currentTime: video.currentTime
-            });
-        });
-
-        video.addEventListener('seeked', () => {
-            if (isRemoteAction) return;
-            const now = Date.now();
-            if (now - lastSyncTimestamp < 300) return; // منع الإرسال المزدوج السريع
-            lastSyncTimestamp = now;
-
-            sendData({
-                type: 'SEEK',
-                currentTime: video.currentTime
-            });
-        });
-
-        // زر المزامنة اليدوية الفورية
-        function forceSyncNow() {
-            if (!video.src && !currentTorrent) {
-                showToast('لا يوجد فيديو مشغل حالياً للمزامنة.', 'warning');
-                return;
+            if (e.data === YT.PlayerState.PLAYING) {
+              sendData({ type: 'sync', action: 'play', time: ytPlayer.getCurrentTime() });
+            } else if (e.data === YT.PlayerState.PAUSED) {
+              sendData({ type: 'sync', action: 'pause', time: ytPlayer.getCurrentTime() });
             }
-            sendData({
-                type: 'FORCE_SYNC',
-                currentTime: video.currentTime,
-                isPlaying: !video.paused
-            });
-            showToast('تم إرسال أمر مزامنة التوقيت لصديقك.', 'success');
+          }
         }
+      });
+    }
 
-        // محاولة التشغيل التلقائي مع معالجة قيود المتصفحات
-        function safePlayVideo() {
-            const playPromise = video.play();
-            if (playPromise !== undefined) {
-                playPromise.then(() => {
-                    autoplayOverlay.classList.add('hidden');
-                }).catch((error) => {
-                    console.warn('Autoplay prevented by browser:', error);
-                    // إظهار زر التفعيل للمستخدم لتجاوز حظر المتصفح
-                    autoplayOverlay.classList.remove('hidden');
-                });
-            }
-        }
+    // تشغيل رابط من خانة الرابط المباشر
+    function playInputUrl() {
+      const url = document.getElementById('videoUrlInput').value.trim();
+      if (!url) return showAlert("الرجاء إدخال رابط الفيديو");
 
-        function manualUnlockPlayback() {
-            video.muted = false;
-            updateMuteUI();
-            video.play().then(() => {
-                autoplayOverlay.classList.add('hidden');
-            }).catch((err) => {
-                showToast('تعذر التشغيل، تأكد من صلاحية رابط الفيديو.', 'error');
-            });
-        }
+      const ytId = getYouTubeId(url);
+      if (ytId) {
+        switchToYouTubePlayer(ytId);
+        sendData({ type: 'load_yt', ytId });
+        return;
+      }
 
-        function toggleMute() {
-            video.muted = !video.muted;
-            updateMuteUI();
-        }
+      loadStreamUrl(url, false);
+      sendData({ type: 'load_url', url });
+    }
 
-        function updateMuteUI() {
-            const text = document.getElementById('mute-text');
-            const icon = document.getElementById('mute-icon');
-            if (video.muted) {
-                text.textContent = 'الصوت مكتوم';
-                icon.classList.replace('text-violet-400', 'text-rose-400');
-            } else {
-                text.textContent = 'الصوت مفعل';
-                icon.classList.replace('text-rose-400', 'text-violet-400');
-            }
-        }
+    // تشغيل بث مباشر أو ملف MP4/M3U8
+    function loadStreamUrl(url, useRelayForXtream = false) {
+      switchToHtml5Player();
+      video.srcObject = null;
+      document.getElementById('relayBadge').classList.add('hidden');
 
-        /**
-         * ============================================================================
-         * 6. دعم الترجمة الخارجية (.SRT و .VTT) مع التحويل التلقائي
-         * ============================================================================
-         */
-        function handleSubtitleUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
+      if (hls) { hls.destroy(); hls = null; }
 
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                let content = e.target.result;
-                
-                // تحويل صيغة SRT إلى WebVTT تلقائياً لتعمل في متصفحات الويب
-                if (file.name.toLowerCase().endsWith('.srt')) {
-                    content = convertSrtToVtt(content);
-                }
-
-                const blob = new Blob([content], { type: 'text/vtt' });
-                const vttUrl = URL.createObjectURL(blob);
-                
-                const track = document.getElementById('subtitle-track');
-                track.src = vttUrl;
-                track.mode = 'showing';
-                
-                if (video.textTracks && video.textTracks[0]) {
-                    video.textTracks[0].mode = 'showing';
-                }
-
-                showToast(`تمت إضافة الترجمة: ${file.name}`, 'success');
-            };
-            reader.readAsText(file, 'UTF-8');
-        }
-
-        function convertSrtToVtt(srtText) {
-            // إضافة ترويسة WEBVTT وتحويل الفواصل العشرية في التوقيت من (,) إلى (.)
-            let vtt = 'WEBVTT\n\n';
-            vtt += srtText
-                .replace(/\r+/g, '')
-                .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
-            return vtt;
-        }
-
-        /**
-         * ============================================================================
-         * 7. المحادثة النصية الفورية (Live Chat)
-         * ============================================================================
-         */
-        function sendChatMessage(event) {
-            event.preventDefault();
-            const input = document.getElementById('chat-input');
-            const text = input.value.trim();
-            if (!text) return;
-
-            appendChatMessage(text, true);
-            sendData({
-                type: 'CHAT',
-                message: text
-            });
-
-            input.value = '';
-        }
-
-        function appendChatMessage(text, isSelf) {
-            const wrapper = document.createElement('div');
-            wrapper.className = `flex flex-col max-w-[85%] ${isSelf ? 'self-start items-start' : 'self-end items-end'}`;
-
-            const bubble = document.createElement('div');
-            bubble.className = isSelf
-                ? 'bg-violet-600 text-white px-3.5 py-2 rounded-2xl rounded-tr-sm text-xs sm:text-sm shadow-md break-words'
-                : 'bg-zinc-800 text-zinc-100 px-3.5 py-2 rounded-2xl rounded-tl-sm text-xs sm:text-sm border border-zinc-700/70 break-words';
-            bubble.textContent = text;
-
-            const time = document.createElement('span');
-            time.className = 'text-[10px] text-zinc-500 mt-1 px-1';
-            const now = new Date();
-            time.textContent = `${isSelf ? 'أنت' : 'صديقك'} • ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-
-            wrapper.appendChild(bubble);
-            wrapper.appendChild(time);
-            chatMessages.appendChild(wrapper);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-
-        function addSystemMessage(text) {
-            const div = document.createElement('div');
-            div.className = 'text-[11px] text-zinc-400 bg-zinc-900/60 border border-zinc-800/60 rounded-lg py-1.5 px-3 text-center my-0.5';
-            div.textContent = text;
-            chatMessages.appendChild(div);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-
-        /**
-         * ============================================================================
-         * دوال مساعدة (Formatting Helpers)
-         * ============================================================================
-         */
-        function formatTime(seconds) {
-            if (isNaN(seconds)) return '00:00';
-            const m = Math.floor(seconds / 60);
-            const s = Math.floor(seconds % 60);
-            return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-        }
-
-        function formatBytes(bytes) {
-            if (bytes === 0) return '0 B';
-            const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-        }
-
-        // تشغيل تهيئة الاتصال عند تحميل الصفحة
-        window.addEventListener('DOMContentLoaded', () => {
-            initPeer();
+      if (url.includes('.m3u8') && Hls.isSupported()) {
+        hls = new Hls();
+        hls.loadSource(url);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          video.play().catch(() => document.getElementById('unmuteOverlay').classList.remove('hidden'));
+          if (useRelayForXtream && relayMode) startP2PStreamRelay();
         });
-    </script>
+        hls.on(Hls.Events.ERROR, (e, data) => {
+          if (data.fatal) showAlert("تعذر تشغيل البث، تأكد من الرابط أو البروكسي.");
+        });
+      } else {
+        video.src = url;
+        video.play().then(() => {
+          if (useRelayForXtream && relayMode) startP2PStreamRelay();
+        }).catch(() => {
+          document.getElementById('unmuteOverlay').classList.remove('hidden');
+        });
+      }
+    }
+
+    // تمرير البث المباشر من جهازي لصديقي لحماية اشتراك Xtream
+    function startP2PStreamRelay() {
+      if (!conn || !conn.open) return;
+      try {
+        const stream = video.captureStream ? video.captureStream() : (video.mozCaptureStream ? video.mozCaptureStream() : null);
+        if (stream) {
+          if (mediaCall) mediaCall.close();
+          mediaCall = peer.call(conn.peer, stream);
+          document.getElementById('relayBadge').classList.remove('hidden');
+        } else {
+          showAlert("متصفحك لا يدعم تمرير البث المباشر، سيتم إرسال الرابط.");
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function unlockAudio() {
+      document.getElementById('unmuteOverlay').classList.add('hidden');
+      if (isYouTubeMode && ytPlayer) {
+        ytPlayer.unMute();
+        ytPlayer.playVideo();
+      } else {
+        video.muted = false;
+        video.play();
+      }
+    }
+
+    // أحداث المزامنة لمشغل HTML5
+    video.addEventListener('play', () => {
+      if (!isRemoteAction) sendData({ type: 'sync', action: 'play', time: video.currentTime });
+    });
+    video.addEventListener('pause', () => {
+      if (!isRemoteAction) sendData({ type: 'sync', action: 'pause', time: video.currentTime });
+    });
+    video.addEventListener('seeked', () => {
+      if (!isRemoteAction) sendData({ type: 'sync', action: 'seek', time: video.currentTime });
+    });
+
+    function forceSync() {
+      const t = isYouTubeMode && ytPlayer ? ytPlayer.getCurrentTime() : video.currentTime;
+      const paused = isYouTubeMode && ytPlayer ? (ytPlayer.getPlayerState() !== 1) : video.paused;
+      sendData({ type: 'sync', action: paused ? 'pause' : 'play', time: t });
+      showAlert("تم إرسال إشارة المزامنة لصديقك");
+    }
+
+    function handleIncomingData(data) {
+      if (data.type === 'chat') {
+        appendChat('صديقك', data.msg, false);
+      } else if (data.type === 'load_url') {
+        document.getElementById('videoUrlInput').value = data.url;
+        loadStreamUrl(data.url, false);
+        document.getElementById('unmuteOverlay').classList.remove('hidden');
+      } else if (data.type === 'load_yt') {
+        switchToYouTubePlayer(data.ytId);
+      } else if (data.type === 'sync') {
+        isRemoteAction = true;
+        if (isYouTubeMode && ytPlayer) {
+          if (Math.abs(ytPlayer.getCurrentTime() - data.time) > 1.5) ytPlayer.seekTo(data.time, true);
+          if (data.action === 'play') ytPlayer.playVideo();
+          if (data.action === 'pause') ytPlayer.pauseVideo();
+        } else if (!video.srcObject) {
+          if (Math.abs(video.currentTime - data.time) > 1.5) video.currentTime = data.time;
+          if (data.action === 'play') video.play().catch(() => document.getElementById('unmuteOverlay').classList.remove('hidden'));
+          if (data.action === 'pause') video.pause();
+        }
+        setTimeout(() => { isRemoteAction = false; }, 500);
+      }
+    }
+
+    // ملف محلي والترجمة
+    function loadLocalVideo(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      loadStreamUrl(url, relayMode);
+    }
+
+    function loadSubtitle(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        let content = ev.target.result;
+        if (file.name.endsWith('.srt')) {
+          content = "WEBVTT\n\n" + content.replace(/,/g, '.');
+        }
+        const blob = new Blob([content], { type: 'text/vtt' });
+        const track = document.createElement('track');
+        track.kind = 'subtitles';
+        track.label = 'العربية';
+        track.srclang = 'ar';
+        track.src = URL.createObjectURL(blob);
+        track.default = true;
+        video.innerHTML = '';
+        video.appendChild(track);
+        showAlert("تمت إضافة ملف الترجمة بنجاح");
+      };
+      reader.readAsText(file);
+    }
+
+    // الشات
+    function sendChat() {
+      const input = document.getElementById('chatInput');
+      const msg = input.value.trim();
+      if (!msg) return;
+      appendChat('أنت', msg, true);
+      sendData({ type: 'chat', msg });
+      input.value = '';
+    }
+
+    function appendChat(sender, msg, isMe) {
+      const box = document.getElementById('chatMessages');
+      const div = document.createElement('div');
+      div.className = isMe ? 'text-right' : 'text-left';
+      div.innerHTML = `<span class="inline-block px-2.5 py-1 rounded-xl ${isMe ? 'bg-purple-900/60 text-purple-100' : 'bg-gray-800 text-gray-200'}"><b>${sender}:</b> ${msg}</span>`;
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    // التبديل بين التبويبات
+    function switchTab(tab) {
+      document.getElementById('tabDirect').classList.toggle('hidden', tab !== 'direct');
+      document.getElementById('tabXtream').classList.toggle('hidden', tab !== 'xtream');
+      document.getElementById('tabBtnDirect').className = tab === 'direct' ? 'flex-1 py-2 rounded-xl text-xs font-bold bg-purple-600 text-white' : 'flex-1 py-2 rounded-xl text-xs font-bold bg-gray-900 text-gray-400';
+      document.getElementById('tabBtnXtream').className = tab === 'xtream' ? 'flex-1 py-2 rounded-xl text-xs font-bold bg-purple-600 text-white' : 'flex-1 py-2 rounded-xl text-xs font-bold bg-gray-900 text-gray-400';
+    }
+
+    // ================= منطق Xtream Codes IPTV عبر البروكسي =================
+    let xtConfig = JSON.parse(localStorage.getItem('xtConfig') || 'null');
+    let currentXtType = 'series';
+    let allXtItems = [];
+
+    if (xtConfig) {
+      document.getElementById('xtHost').value = xtConfig.host;
+      document.getElementById('xtUser').value = xtConfig.user;
+      document.getElementById('xtPass').value = xtConfig.pass;
+    }
+
+    function proxiedUrl(rawUrl) {
+      return WORKER_URL + "?url=" + encodeURIComponent(rawUrl);
+    }
+
+    async function loginXtream() {
+      let host = document.getElementById('xtHost').value.trim().replace(/\/+$/, '');
+      const user = document.getElementById('xtUser').value.trim();
+      const pass = document.getElementById('xtPass').value.trim();
+      if (!host || !user || !pass) return showAlert("أدخل بيانات اشتراك Xtream كاملة");
+      if (!host.startsWith('http')) host = 'http://' + host;
+
+      const btn = document.getElementById('xtLoginBtn');
+      btn.textContent = "جاري التحقق من الاشتراك...";
+      btn.disabled = true;
+
+      try {
+        const apiUrl = `${host}/player_api.php?username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`;
+        const res = await fetch(proxiedUrl(apiUrl));
+        const data = await res.json();
+        if (data.user_info && data.user_info.auth === 1) {
+          xtConfig = { host, user, pass };
+          localStorage.setItem('xtConfig', JSON.stringify(xtConfig));
+          document.getElementById('xtreamLoginForm').classList.add('hidden');
+          document.getElementById('xtreamBrowser').classList.remove('hidden');
+          loadXtreamSection('series');
+        } else {
+          showAlert("بيانات الاشتراك غير صحيحة أو منتهية الصلاحية");
+        }
+      } catch (e) {
+        showAlert("فشل الاتصال بسيرفر IPTV عبر البروكسي");
+      } finally {
+        btn.textContent = "دخول وجلب المكتبة";
+        btn.disabled = false;
+      }
+    }
+
+    function logoutXtream() {
+      document.getElementById('xtreamLoginForm').classList.remove('hidden');
+      document.getElementById('xtreamBrowser').classList.add('hidden');
+    }
+
+    async function loadXtreamSection(type) {
+      currentXtType = type;
+      closeSeriesBox();
+      ['series', 'vod', 'live'].forEach(t => {
+        const b = document.getElementById('xtSec' + t.charAt(0).toUpperCase() + t.slice(1));
+        b.className = t === type ? 'px-3 py-1.5 rounded-lg text-xs font-bold bg-purple-600 text-white' : 'px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-900 text-gray-300';
+      });
+
+      const grid = document.getElementById('xtItemsGrid');
+      const loader = document.getElementById('xtLoading');
+      grid.innerHTML = '';
+      loader.classList.remove('hidden');
+
+      const catAction = type === 'series' ? 'get_series_categories' : type === 'vod' ? 'get_vod_categories' : 'get_live_categories';
+      const itemsAction = type === 'series' ? 'get_series' : type === 'vod' ? 'get_vod_streams' : 'get_live_streams';
+
+      try {
+        const base = `${xtConfig.host}/player_api.php?username=${encodeURIComponent(xtConfig.user)}&password=${encodeURIComponent(xtConfig.pass)}`;
+        const [catRes, itemsRes] = await Promise.all([
+          fetch(proxiedUrl(`${base}&action=${catAction}`)).then(r => r.json()),
+          fetch(proxiedUrl(`${base}&action=${itemsAction}`)).then(r => r.json())
+        ]);
+
+        const sel = document.getElementById('xtCategorySelect');
+        sel.innerHTML = '<option value="all">كل الأقسام</option>';
+        if (Array.isArray(catRes)) {
+          catRes.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.category_id;
+            opt.textContent = c.category_name;
+            sel.appendChild(opt);
+          });
+        }
+
+        allXtItems = Array.isArray(itemsRes) ? itemsRes : [];
+        filterXtreamItems();
+      } catch (e) {
+        showAlert("حدث خطأ أثناء جلب القائمة");
+      } finally {
+        loader.classList.add('hidden');
+      }
+    }
+
+    function filterXtreamItems() {
+      const catId = document.getElementById('xtCategorySelect').value;
+      const q = document.getElementById('xtSearchInput').value.trim().toLowerCase();
+      const grid = document.getElementById('xtItemsGrid');
+      grid.innerHTML = '';
+
+      const filtered = allXtItems.filter(item => {
+        const matchCat = catId === 'all' || String(item.category_id) === String(catId);
+        const name = (item.name || '').toLowerCase();
+        return matchCat && name.includes(q);
+      }).slice(0, 80); // عرض أول 80 نتيجة لسرعة التصفح على الموبايل
+
+      filtered.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'bg-gray-950 border border-gray-800 hover:border-purple-500 rounded-xl overflow-hidden cursor-pointer flex flex-col';
+        const img = item.cover || item.stream_icon || '';
+        card.innerHTML = `
+          <div class="h-28 bg-gray-900 flex items-center justify-center overflow-hidden">
+            ${img ? `<img src="${img}" loading="lazy" class="w-full h-full object-cover" onerror="this.style.display='none'">` : '<span class="text-2xl">🎬</span>'}
+          </div>
+          <div class="p-2 text-[11px] font-medium line-clamp-2 text-center">${item.name}</div>
+        `;
+        card.onclick = () => onXtreamItemClick(item);
+        grid.appendChild(card);
+      });
+    }
+
+    async function onXtreamItemClick(item) {
+      if (currentXtType === 'series') {
+        // جلب حلقات المسلسل
+        document.getElementById('xtLoading').classList.remove('hidden');
+        try {
+          const url = `${xtConfig.host}/player_api.php?username=${encodeURIComponent(xtConfig.user)}&password=${encodeURIComponent(xtConfig.pass)}&action=get_series_info&series_id=${item.series_id}`;
+          const info = await fetch(proxiedUrl(url)).then(r => r.json());
+          document.getElementById('selectedSeriesTitle').textContent = item.name;
+          const epGrid = document.getElementById('episodesGrid');
+          epGrid.innerHTML = '';
+
+          if (info.episodes) {
+            Object.keys(info.episodes).forEach(seasonNum => {
+              info.episodes[seasonNum].forEach(ep => {
+                const btn = document.createElement('button');
+                btn.className = 'bg-gray-900 hover:bg-purple-600 border border-gray-700 rounded-lg p-2 text-[11px] text-center truncate';
+                btn.textContent = `م${seasonNum} - ح${ep.episode_num}`;
+                btn.onclick = () => {
+                  const ext = ep.container_extension || 'mp4';
+                  const rawStream = `${xtConfig.host}/series/${xtConfig.user}/${xtConfig.pass}/${ep.id}.${ext}`;
+                  playXtreamStream(rawStream);
+                };
+                epGrid.appendChild(btn);
+              });
+            });
+          }
+          document.getElementById('seriesEpisodesBox').classList.remove('hidden');
+        } catch (e) {
+          showAlert("تعذر جلب حلقات المسلسل");
+        } finally {
+          document.getElementById('xtLoading').classList.add('hidden');
+        }
+      } else if (currentXtType === 'vod') {
+        const ext = item.container_extension || 'mp4';
+        const rawStream = `${xtConfig.host}/movie/${xtConfig.user}/${xtConfig.pass}/${item.stream_id}.${ext}`;
+        playXtreamStream(rawStream);
+      } else {
+        const rawStream = `${xtConfig.host}/live/${xtConfig.user}/${xtConfig.pass}/${item.stream_id}.m3u8`;
+        playXtreamStream(rawStream);
+      }
+    }
+
+    function closeSeriesBox() {
+      document.getElementById('seriesEpisodesBox').classList.add('hidden');
+    }
+
+    function playXtreamStream(rawStreamUrl) {
+      const finalUrl = proxiedUrl(rawStreamUrl);
+      loadStreamUrl(finalUrl, true);
+      if (!relayMode) {
+        sendData({ type: 'load_url', url: finalUrl });
+      }
+    }
+
+    initPeer();
+  </script>
 </body>
 </html>
-```
